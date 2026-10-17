@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HeaderGuard docs – API and scoring</title>
+<meta name="description" content="HeaderGuard JSON API reference and the transparent scoring table for HTTP security headers.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="doc">
+<header class="top">
+  <div class="wrap nav">
+    <a class="brand" href="/"><svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#1e3a8a"/><path d="M16 6l8 3v6c0 5-3.4 9.4-8 11-4.6-1.6-8-6-8-11V9z" fill="#fff"/><path d="M12 16h8M12 12h8M12 20h5" stroke="#1e3a8a" stroke-width="2"/></svg> HeaderGuard</a>
+    <nav><a href="/#headers">Headers</a><a href="/docs">API &amp; scoring</a><a href="/#privacy">Privacy</a></nav>
+  </div>
+</header>
+
+<main class="wrap">
+<h1>Docs: API and scoring</h1>
+<p class="lead">HeaderGuard fetches one URL from our server, follows up to 10 redirects, and grades the security headers of the final response.</p>
+
+<h2 id="api">API</h2>
+<p>Free, no key, CORS enabled for GET. About 30 scans per minute per IP (approximate; IPv6 addresses are counted per /64). Results are cached in memory for 2 minutes (<code>x-cache: HIT</code>); cached results don't count against the limit.</p>
+<h3>GET /api/scan?url=&lt;url-or-domain&gt;</h3>
+<pre><code>curl "https://headerguard.mike-tusa.workers.dev/api/scan?url=example.com"
+curl "https://headerguard.mike-tusa.workers.dev/api/scan?url=https://example.com/login"</code></pre>
+<p>A bare domain is scanned as <code>https://&lt;domain&gt;/</code>; if HTTPS does not answer at all, plain HTTP is scanned instead (and noted). <code>domain=</code> is accepted as an alias for <code>url=</code>.</p>
+<h3>Response (abridged)</h3>
+<pre><code>{
+  "url": "https://github.com/",
+  "finalUrl": "https://github.com/",
+  "finalStatus": 200,
+  "redirects": [ { "url": "https://github.com/", "status": 200, "ms": 120 } ],
+  "httpCheck": { "url": "http://github.com/", "status": 301, "redirectsToHttps": true,
+                 "hops": [ { "url": "http://github.com/", "status": 301, "location": "https://github.com/" } ] },
+  "score": 85, "grade": "A", "gradeWithheld": false, "gradeWithheldReason": null,
+  "scoring": { "base": 85, "leakPenalty": 0, "cappedNoHttps": false, "max": 100 },
+  "findings": [
+    { "id": "hsts", "name": "Strict-Transport-Security", "present": true,
+      "value": "max-age=31536000; includeSubdomains; preload",
+      "status": "pass", "points": 15, "max": 15, "summary": "Strong",
+      "notes": [ { "level": "pass", "text": "max-age is 31536000 seconds…" } ] },
+    …
+  ],
+  "reliability": "ok",
+  "notes": [],
+  "fixes": {
+    "items": [ { "id": "coop", "title": "Add Cross-Origin-Opener-Policy", "header": "Cross-Origin-Opener-Policy",
+                 "value": "same-origin", "note": "…",
+                 "snippets": { "nginx": "…", "apache": "…", "cloudflare": "…", "netlify": "…", "vercel": "…", "express": "…" } } ],
+    "combined": { "nginx": "…", … },
+    "platforms": { "nginx": "nginx", "apache": "Apache (.htaccess)", … }
+  },
+  "headers": [ ["content-type", "text/html; charset=utf-8"], ["set-cookie", "_gh_sess=&lt;redacted&gt;; path=/; secure; HttpOnly; SameSite=Lax"] ],
+  "meta": { "version": "0.5.1", "scannedAt": "2026-10-03T12:00:00.000Z", "durationMs": 640, "subrequests": 4 }
+}</code></pre>
+<h3 id="not-graded">Not graded: blocked or challenged scans</h3>
+<p><code>reliability</code> is <code>"ok"</code>, or <code>"blocked_or_challenged"</code> when the site answered with a block, rate-limit or bot-challenge page (final HTTP 401/403/429/503, a <code>cf-mitigated</code> header, or a redirect to a captcha such as Google's <code>/sorry/</code>). The headers we received then belong to that block page, not the real site, so <strong>no grade is given</strong>:</p>
+<pre><code>{
+  "reliability": "blocked_or_challenged",
+  "score": null,
+  "grade": null,
+  "gradeWithheld": true,
+  "gradeWithheldReason": "The site blocked, rate-limited or challenged our scanner (final HTTP 429, redirected to a captcha/challenge page). …",
+  "unreliableRawScore": { "score": 15, "note": "UNRELIABLE: computed from the block/challenge page, not the real site. Do not display as a grade." },
+  "findings": [ … ]   // describe the block page only
+}</code></pre>
+<p>The page shows a grey "Not graded: blocked" box instead of a letter, with the warning above the result. For normal scans <code>gradeWithheld</code> is <code>false</code>, <code>gradeWithheldReason</code> is <code>null</code> and there is no <code>unreliableRawScore</code>. Please don't publish <code>unreliableRawScore</code> as a grade.</p>
+<p>Finding <code>id</code>s: <code>https</code>, <code>hsts</code>, <code>csp</code>, <code>framing</code>, <code>xcto</code>, <code>referrer</code>, <code>permissions</code>, <code>coop</code>, <code>corp</code>, <code>cookies</code>, <code>coep</code> (info), <code>xxss</code> (info), <code>leaks</code> (penalty). <code>status</code> is <code>pass</code>, <code>warn</code>, <code>fail</code> or <code>info</code>. Cookie values are always redacted.</p>
+<h3>Errors</h3>
+<p>Errors return JSON <code>{"error": {"code", "message"}}</code> (plus <code>redirects</code> when a redirect chain was followed).</p>
+<table class="tbl">
+<tr><th>HTTP</th><th>code</th><th>When</th></tr>
+<tr><td>400</td><td>invalid_url, invalid_scheme</td><td>Missing or malformed URL, credentials in the URL, a scheme other than http/https</td></tr>
+<tr><td>403</td><td>blocked_target, blocked_port, blocked_redirect</td><td>Private, loopback, link-local, metadata or special-use address or name; a port other than 80/443/8080/8443; a redirect to any of those</td></tr>
+<tr><td>405</td><td>method_not_allowed</td><td>Anything but GET/HEAD/OPTIONS</td></tr>
+<tr><td>422</td><td>dns_not_found</td><td>The hostname does not exist (NXDOMAIN) or has no A/AAAA records</td></tr>
+<tr><td>429</td><td>rate_limited</td><td>Too many scans from your IP (retry after 60 s)</td></tr>
+<tr><td>502</td><td>fetch_failed, too_many_redirects, redirect_loop, bad_redirect, dns_error</td><td>The site could not be reached, it redirects more than 10 times, or DNS resolution failed (dns_error: SERVFAIL, REFUSED or no resolver answered; retry later)</td></tr>
+<tr><td>504</td><td>timeout</td><td>No response within 5 s per request (20 s per scan)</td></tr>
+</table>
+<h3>GET /api/health</h3>
+<pre><code>{ "ok": true, "service": "headerguard", "version": "0.5.1", "publicLaunch": true,
+  "build": "1a2b3c4d", "deployId": "1a2b3c4d-…", "deployedAt": "2026-10-03T16:40:00.000Z" }</code></pre>
+<p><code>build</code> / <code>deployId</code> identify the exact deployed Worker version (from Cloudflare's version metadata); <code>deployedAt</code> is when it was uploaded.</p>
+
+
+
+<h2 id="pro">HeaderGuard Pro ($9/mo)</h2>
+<p>Higher limits for developers and CI. Polar is the merchant of record; cancel anytime via the <a href="https://polar.sh/digital-promo/portal" target="_blank" rel="noopener noreferrer">customer portal</a>. Support: <a href="mailto:digitalpromohub.support@gmail.com">digitalpromohub.support@gmail.com</a>.</p>
+<p><a href="https://buy.polar.sh/polar_cl_isRRVJTATDI60ftjw6GnmlDneRdw46fI2cQcm0n6pnD" target="_blank" rel="noopener noreferrer">Checkout — HeaderGuard Pro</a></p>
+<ul>
+<li><strong>About 120 scans/min</strong> per license key (free: about 30/min per IP).</li>
+<li><strong>Batch:</strong> <code>POST /api/scan/batch</code> with JSON <code>{ "urls": ["a.com","b.com"] }</code> — at most 5 URLs; each is SSRF-checked like a normal scan.</li>
+<li>Free plan (no key): one-off scans, the embeddable badge, and full results stay free.</li>
+</ul>
+<p>Send your key as <code>X-License-Key: HDRG-…</code> or <code>Authorization: Bearer HDRG-…</code>. Responses include <code>plan: "free"</code> or <code>plan: "pro"</code>. Invalid or expired keys return 401/403 JSON with an <code>upgradeUrl</code> (never echo the key).</p>
+<pre><code>curl -H "X-License-Key: HDRG-****" \
+  "https://headerguard.mike-tusa.workers.dev/api/scan?url=example.com"
+
+curl -X POST -H "Authorization: Bearer HDRG-****" -H "content-type: application/json" \
+  -d '{"urls":["example.com","github.com"]}' \
+  "https://headerguard.mike-tusa.workers.dev/api/scan/batch"</code></pre>
+<p class="small">Billing terms: payment processed by Polar; we never see your card. License keys are validated against our license store and are not written to request logs.</p>
+
+<h2 id="mcp">MCP server for AI agents</h2>
+<p>HeaderGuard is also a remote <a href="https://modelcontextprotocol.io/" target="_blank" rel="noopener noreferrer">Model Context Protocol</a> (MCP) server at <code>https://headerguard.mike-tusa.workers.dev/mcp</code> (Streamable HTTP, POST only, stateless, JSON responses). Most MCP clients accept this config; some use a different format (for example, VS Code uses a <code>servers</code> key):</p>
+<pre><code>{ "mcpServers": { "headerguard": { "type": "http", "url": "https://headerguard.mike-tusa.workers.dev/mcp" } } }</code></pre>
+<p>One read-only tool, <code>scan_headers</code>, with <code>url</code> (required) and <code>include_raw</code> (optional). It runs the same scan as <code>GET /api/scan</code> and shares its 2-minute cache, its per-minute limits and the HeaderGuard Pro license key (<code>Authorization: Bearer HDRG-…</code> or <code>X-License-Key</code>); each <code>tools/call</code> counts as one scan. Over a limit, the tool result has <code>isError: true</code> and <code>retryAfterSeconds</code>. Machine-readable docs: <a href="/llms.txt">llms.txt</a> · <a href="/openapi.json">OpenAPI 3.1 spec</a>.</p>
+
+<h2 id="badge">Embeddable grade badge</h2>
+<p>Free shields-style SVG for READMEs and site footers. No sign-up.</p>
+<pre><code>GET /badge/&lt;host&gt;.svg
+
+https://headerguard.mike-tusa.workers.dev/badge/example.com.svg</code></pre>
+<p>Markdown:</p>
+<pre><code>[![security headers](https://headerguard.mike-tusa.workers.dev/badge/example.com.svg)](https://headerguard.mike-tusa.workers.dev/?url=example.com&amp;src=badge)</code></pre>
+<p>The right-hand side shows the letter grade (A+…F). If the site blocked or challenged the scanner, or the host is invalid / not allowed, the badge is neutral grey (<code>not graded</code> or <code>unknown</code>) and still returns HTTP 200 so embeds do not break. A short-lived grey <code>try later</code> badge is returned when the per-IP badge rate limit is hit.</p>
+<ul>
+<li><strong>Host only:</strong> a bare hostname (lowercased). Paths, ports, userinfo and IP literals are rejected. The same SSRF rules as the scanner apply, because the badge reuses the scan code path.</li>
+<li><strong>Caching:</strong> graded badges are cached about 24 hours (<code>s-maxage=86400</code>, browser/camo <code>max-age=3600</code>) via the Workers Cache API. Errors use about 1 hour. A cache hit does not run a scan and does not count against the rate limit. The grade you see can therefore be up to about a day old; open the linked report for a fresh scan.</li>
+<li><strong>Report link:</strong> <code>/?url=&lt;host&gt;&amp;src=badge</code> pre-fills the form and runs the scan automatically. The results page includes copy-ready Markdown, HTML and direct-URL snippets.</li>
+<li><code>Content-Type: image/svg+xml</code>, <code>X-Content-Type-Options: nosniff</code>, and a strict SVG CSP (<code>default-src 'none'; style-src 'unsafe-inline'</code>). All text in the SVG is escaped.</li>
+</ul>
+
+<h2 id="scoring">Scoring</h2>
+<p>Points per check add up to 100. Penalties and caps are applied after that. Only the final response's headers are graded (after redirects).</p>
+<table class="tbl">
+<tr><th>Check</th><th>Max</th><th>How points are earned</th></tr>
+<tr><td>HTTPS</td><td>10</td><td>5 if the final URL is HTTPS. 5 if <code>http://host/</code> ends up on HTTPS within 5 redirects (e.g. http://apex → http://www → https://www; every hop is safety-checked), or if plain HTTP does not answer at all. If the scan ends on a different host (e.g. apex → www), <code>http://&lt;final host&gt;/</code> must redirect to HTTPS too (reported in <code>httpCheck.finalHost</code>). <strong>Couldn't check is not a failure:</strong> if either redirect check can't finish (a later hop times out, can't be reached or its DNS lookup fails with an error such as SERVFAIL or REFUSED, or the per-scan request budget runs out), nothing is deducted and an info note says so. Real failures still cost the 5 points: answering without a redirect, redirecting to a blocked address, a broken redirect, 5 or more plain-HTTP-to-plain-HTTP redirects in a row (HTTPS must be reached within 5 redirects), or a redirect to a host that doesn't exist. If the very first <code>http://</code> request gets no answer at all (refused or timed out), that counts as plain HTTP not being served, as before.</td></tr>
+<tr><td>Strict-Transport-Security</td><td>15</td><td>max-age ≥ 1 year: 12 · ≥ 180 days: 9 · shorter: 4 · missing, 0 or invalid: 0. +2 includeSubDomains. +1 preload (only counts with ≥ 1 year and includeSubDomains). Not applicable (0) without HTTPS.</td></tr>
+<tr><td>Content-Security-Policy</td><td>25</td><td>Enforced policy present: 6. +3 scripts restricted (script-src or default-src). +5 no effective <code>'unsafe-inline'</code> (a nonce or hash neutralizes it). +3 no <code>'unsafe-eval'</code>. +3 no broad script sources (<code>*</code>, <code>http:</code>, <code>https:</code>, <code>data:</code>, <code>blob:</code>; ignored with <code>'strict-dynamic'</code>). +2 <code>object-src 'none'</code> (directly or via <code>default-src 'none'</code>). +1 base-uri. +1 frame-ancestors. +1 default-src. Report-Only only: 3. Missing: 0. With several enforced policies, a check passes if any policy passes.</td></tr>
+<tr><td>Framing</td><td>10</td><td><code>X-Frame-Options: DENY</code> or <code>SAMEORIGIN</code>, or CSP <code>frame-ancestors</code>: 10. ALLOW-FROM, invalid or missing: 0.</td></tr>
+<tr><td>X-Content-Type-Options</td><td>10</td><td><code>nosniff</code>: 10. Otherwise 0.</td></tr>
+<tr><td>Referrer-Policy</td><td>10</td><td>no-referrer, same-origin, strict-origin, strict-origin-when-cross-origin: 10 · origin, origin-when-cross-origin: 6 · missing or invalid: 5 (browsers default to strict-origin-when-cross-origin) · no-referrer-when-downgrade: 3 · unsafe-url: 0. The last valid value in a list wins.</td></tr>
+<tr><td>Permissions-Policy</td><td>5</td><td>At least one feature directive: 5 · only legacy Feature-Policy or only interest-cohort: 2 · missing: 0.</td></tr>
+<tr><td>Cross-Origin-Opener-Policy</td><td>5</td><td>same-origin: 5 · same-origin-allow-popups / noopener-allow-popups: 4 · unsafe-none or missing: 0.</td></tr>
+<tr><td>Cross-Origin-Resource-Policy</td><td>5</td><td>same-origin or same-site: 5 · cross-origin: 2 · missing: 0.</td></tr>
+<tr><td>Cookies</td><td>5</td><td>No Set-Cookie on the response: 5. Otherwise 5 × (cookies with both Secure and SameSite) ÷ (all cookies), rounded. 0 without HTTPS. Missing HttpOnly is noted but not scored.</td></tr>
+<tr><td>Cross-Origin-Embedder-Policy</td><td>0</td><td>Information only. It can break third-party embeds and is only needed for cross-origin isolation.</td></tr>
+<tr><td>X-XSS-Protection</td><td>0</td><td>Information only. Absent or <code>0</code> is recommended; <code>1</code> / <code>1; mode=block</code> gets a warning.</td></tr>
+<tr><td>Version leaks</td><td>−5</td><td>−2 each (at most −5) for a Server header with a version number, X-Powered-By, X-AspNet-Version or X-AspNetMvc-Version.</td></tr>
+</table>
+<p><strong>Cap:</strong> if the final page is not served over HTTPS, the score is capped at 39 (F).</p>
+<p><strong>Not graded:</strong> blocked or challenged scans get no score or letter (see <a href="#not-graded">above</a>).</p>
+<table class="tbl">
+<tr><th>Grade</th><th>A+</th><th>A</th><th>B</th><th>C</th><th>D</th><th>F</th></tr>
+<tr><td>Score</td><td>≥ 95</td><td>≥ 85</td><td>≥ 70</td><td>≥ 55</td><td>≥ 40</td><td>&lt; 40</td></tr>
+</table>
+
+<h2 id="fixes">Fix snippets</h2>
+<p>Each weak or missing header comes with a snippet for nginx, Apache (.htaccess), Cloudflare (Pages <code>_headers</code> or Workers), Netlify <code>_headers</code>, Vercel <code>vercel.json</code> and Express with helmet. The values are deliberately conservative:</p>
+<ul>
+<li><strong>HSTS</strong> <code>max-age=31536000; includeSubDomains</code>. No preload by default; read hstspreload.org first.</li>
+<li><strong>CSP</strong>: a safe <em>starter</em> policy sent as <code>Content-Security-Policy-Report-Only</code>. It needs tuning for your site (inline scripts, analytics, fonts and CDNs will be reported until you allow them). Enforce it only after the reports are clean.</li>
+<li><strong>X-Frame-Options</strong> SAMEORIGIN, <strong>Referrer-Policy</strong> strict-origin-when-cross-origin, <strong>Permissions-Policy</strong> camera, microphone and geolocation off, <strong>COOP/CORP</strong> same-origin (with notes about popups and cross-site assets).</li>
+</ul>
+<p>Always test changes on staging first.</p>
+
+<h2 id="limits">Limitations</h2>
+<ul>
+<li>Only one response is graded. Other pages, error pages and assets may send different headers.</li>
+<li>A CSP set with a <code>&lt;meta&gt;</code> tag is not seen, because the page body is never read.</li>
+<li>Some sites send different headers to bots, block cloud IP ranges, or require JavaScript challenges; results then reflect what our server received and are flagged with <code>reliability: "blocked_or_challenged"</code>. For example, google.com currently answers our Cloudflare-hosted scanner with a 429 captcha page.</li>
+<li>Only ports 80, 443, 8080 and 8443 can be scanned, and only public addresses.</li>
+</ul>
+<h2 id="abuse">Abuse reports</h2>
+<p>HeaderGuard sends ordinary GET requests (headers only, at most a few per scan) with a user agent containing <code>HeaderGuard/0.1; +https://headerguard.mike-tusa.workers.dev/docs</code>, and scans are rate-limited per IP. If you believe it is being used against your site, email <a href="mailto:digitalpromohub.support@gmail.com">digitalpromohub.support@gmail.com</a> with the time (and timezone) and the URL that was requested.</p>
+
+<h2 id="privacy">Privacy</h2>
+<p>See the <a href="/#privacy">privacy note</a>: no stored URLs or results beyond 2 minutes of in-memory caching, no logs, no cookies, no analytics.</p>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <p>HeaderGuard: free one-off checks of a website's HTTP security headers. Results are informational, based on one response at the moment of the scan, and not a full security audit.</p>
+    <p>Contact: <a href="mailto:digitalpromohub.support@gmail.com">digitalpromohub.support@gmail.com</a> · <a href="/docs">API &amp; scoring docs</a> · <a href="/#privacy">Privacy</a></p>
+  </div>
+</footer>
+</body>
+</html>

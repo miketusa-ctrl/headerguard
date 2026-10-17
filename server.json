@@ -1,0 +1,25 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "dev.workers.mike-tusa.headerguard/headerguard",
+  "title": "HeaderGuard",
+  "description": "Scan a website's HTTP security headers (HSTS, CSP, framing, COOP/CORP, cookies). Score + fixes.",
+  "version": "0.5.1",
+  "websiteUrl": "https://headerguard.mike-tusa.workers.dev/",
+  "icons": [
+    { "src": "https://headerguard.mike-tusa.workers.dev/favicon.svg", "mimeType": "image/svg+xml", "sizes": ["any"] }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://headerguard.mike-tusa.workers.dev/mcp",
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "Optional. 'Bearer HDRG-…' (HeaderGuard Pro license) for higher limits. Works without a key.",
+          "isRequired": false,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}

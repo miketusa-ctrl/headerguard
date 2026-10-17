@@ -1,0 +1,189 @@
+(() => {
+  'use strict';
+  // All scanned/remote text is inserted with textContent / text nodes only (never parsed as HTML).
+  const $ = (s) => document.querySelector(s);
+  const el = (tag, attrs = {}, ...kids) => {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === 'class') n.className = v; else if (k === 'text') n.textContent = v; else n.setAttribute(k, v);
+    }
+    for (const k of kids) if (k != null) n.append(k instanceof Node ? k : document.createTextNode(String(k)));
+    return n;
+  };
+  const form = $('#scan-form');
+  const input = $('#url');
+  const out = $('#results');
+  const btn = $('#go');
+  const curl = $('#curl-example');
+  if (curl) curl.textContent = `curl "${location.origin}/api/scan?url=example.com"`;
+  // v0.4.0: MCP client config for this origin (same JSON as the static HTML, llms.txt and README).
+  const mcpCfg = $('#mcp-config');
+  if (mcpCfg) mcpCfg.textContent = JSON.stringify({ mcpServers: { headerguard: { type: 'http', url: `${location.origin}/mcp` } } }, null, 2);
+  if (!form) return;
+
+  const PLATFORM_ORDER = ['nginx', 'apache', 'cloudflare', 'netlify', 'vercel', 'express'];
+  let platform = 'nginx';
+
+  function copyButton(getText) {
+    const b = el('button', { type: 'button', class: 'sm', text: 'Copy' });
+    b.addEventListener('click', async () => {
+      const text = getText();
+      try { await navigator.clipboard.writeText(text); b.textContent = 'Copied'; }
+      catch (_) {
+        const ta = el('textarea'); ta.value = text; document.body.append(ta); ta.select();
+        try { document.execCommand('copy'); b.textContent = 'Copied'; } catch (_) { b.textContent = 'Copy failed'; }
+        ta.remove();
+      }
+      setTimeout(() => { b.textContent = 'Copy'; }, 1500);
+    });
+    return b;
+  }
+
+  function snippetBox(snippets) {
+    const pre = el('pre', {}, el('code', { text: snippets[platform] || '' }));
+    pre.dataset.snippets = '1';
+    const box = el('div', { class: 'snip' }, pre, copyButton(() => pre.textContent));
+    box._snippets = snippets;
+    return box;
+  }
+
+  function refreshSnippets() {
+    for (const box of out.querySelectorAll('.snip')) {
+      if (!box._snippets) continue;
+      box.querySelector('code').textContent = box._snippets[platform] || '';
+    }
+    for (const s of out.querySelectorAll('select.plat')) s.value = platform;
+  }
+
+  function platformSelect(platforms) {
+    const s = el('select', { class: 'plat', 'aria-label': 'Platform for fix snippets' });
+    for (const id of PLATFORM_ORDER) s.append(el('option', { value: id, text: platforms[id] || id }));
+    s.value = platform;
+    s.addEventListener('change', () => { platform = s.value; refreshSnippets(); });
+    return s;
+  }
+
+  function badge(status) { return el('span', { class: `badge b-${status}`, text: status }); }
+
+  function renderFinding(f, fix, platforms) {
+    const open = f.status === 'fail' || f.status === 'warn';
+    const pts = f.id === 'leaks' ? (f.penalty ? `−${f.penalty}` : '0') : (f.max ? `${f.points}/${f.max}` : 'not scored');
+    const d = el('details', { class: 'item' },
+      el('summary', {}, badge(f.status), el('span', { class: 'name', text: f.name }), el('span', { class: 'sum', text: f.summary || '' }), el('span', { class: 'pts', text: pts })));
+    if (open) d.open = true;
+    const body = el('div', { class: 'body' });
+    if (f.value) body.append(el('div', { class: 'small', text: 'Current value:' }), el('div', { class: 'rec', text: f.value }));
+    if (f.reportOnlyValue) body.append(el('div', { class: 'small', text: 'Report-Only value:' }), el('div', { class: 'rec', text: f.reportOnlyValue }));
+    if (f.notes && f.notes.length) {
+      const ul = el('ul');
+      for (const n of f.notes) ul.append(el('li', { class: `l-${n.level}`, text: n.text }));
+      body.append(ul);
+    }
+    if (f.details && f.details.cookies) {
+      const t = el('table', { class: 'tbl' }, el('tr', {}, el('th', { text: 'Cookie' }), el('th', { text: 'Secure' }), el('th', { text: 'HttpOnly' }), el('th', { text: 'SameSite' })));
+      for (const c of f.details.cookies) t.append(el('tr', {}, el('td', { text: c.name }), el('td', { text: c.secure ? 'yes' : 'no' }), el('td', { text: c.httpOnly ? 'yes' : 'no' }), el('td', { text: c.sameSite || '—' })));
+      body.append(t);
+    }
+    if (fix) {
+      const box = el('div', { class: 'fix' }, el('h4', { text: fix.title }));
+      if (fix.header) box.append(el('div', { class: 'rec', text: `${fix.header}: ${fix.value}` }));
+      if (fix.note) box.append(el('p', { class: 'small', text: fix.note }));
+      box.append(el('div', { class: 'bar' }, el('span', { class: 'small', text: 'Snippet for' }), platformSelect(platforms)), snippetBox(fix.snippets));
+      body.append(box);
+    }
+    d.append(body);
+    return d;
+  }
+
+  function render(r) {
+    out.replaceChildren();
+    const withheld = r.gradeWithheld === true || r.grade == null;
+    // blocked/challenged scans get no letter or score; the warning goes ABOVE the result.
+    if (withheld) out.append(el('div', { class: 'note warnnote', role: 'status', text: (r.notes && r.notes[0] && r.notes[0].text) || r.gradeWithheldReason || 'Not graded.' }));
+    const gradeCls = withheld ? 'NA' : r.grade === 'A+' ? 'Ap' : r.grade;
+    const chain = el('ol', { class: 'chain' });
+    for (const h of r.redirects) chain.append(el('li', { text: `${h.status} ${h.url}${h.location ? ' → ' + h.location : ''}` }));
+    out.append(el('div', { class: 'summary' },
+      withheld
+        ? el('div', { class: 'gradebox g-NA', 'aria-label': 'Not graded: blocked' }, el('span', { class: 'g na', text: 'Not graded' }), el('span', { class: 's', text: 'blocked' }))
+        : el('div', { class: `gradebox g-${gradeCls}` }, el('span', { class: 'g', text: r.grade }), el('span', { class: 's', text: `${r.score}/100` })),
+      el('div', {},
+        el('h2', { text: r.finalUrl }),
+        el('div', { class: 'meta', text: `HTTP ${r.finalStatus} · ${r.redirects.length - 1} redirect${r.redirects.length === 2 ? '' : 's'} · scanned ${new Date(r.meta.scannedAt).toLocaleString()} · ${r.meta.durationMs} ms` }),
+        r.redirects.length > 1 ? chain : null,
+        el('div', { class: 'meta' }, el('a', { href: `/api/scan?url=${encodeURIComponent(r.url)}`, target: '_blank', rel: 'noopener', text: 'View JSON' })))));
+    const s = r.scoring;
+    if (!withheld && (s.leakPenalty || s.cappedNoHttps)) out.append(el('div', { class: 'note', text: `Points: ${s.base}${s.leakPenalty ? ` − ${s.leakPenalty} (version leaks)` : ''}${s.cappedNoHttps ? ' → capped at 39 because the site is not served over HTTPS' : ''} = ${r.score}.` }));
+    for (const n of (r.notes || []).slice(withheld ? 1 : 0)) out.append(el('div', { class: 'note', text: n.text }));
+    if (withheld) out.append(el('p', { class: 'small', text: 'The findings below describe the block/challenge page we received, not the real site.' }));
+
+    const fixesById = Object.fromEntries((r.fixes.items || []).map((f) => [f.id, f]));
+    out.append(el('h2', { text: 'Findings' }));
+    for (const f of r.findings) out.append(renderFinding(f, fixesById[f.id], r.fixes.platforms));
+
+    if (r.fixes.combined) {
+      out.append(el('h2', { text: 'All header fixes together' }),
+        el('p', { class: 'small', text: 'Every missing or weak header above in one block. Test on staging first; the CSP is a Report-Only starter policy that needs tuning.' }),
+        el('div', { class: 'bar' }, el('span', { class: 'small', text: 'Platform' }), platformSelect(r.fixes.platforms)),
+        snippetBox(r.fixes.combined));
+    }
+
+    // Embeddable grade badge (v0.2.5). Host comes from the scanned URL; grey badges still offer the snippets.
+    const hostForBadge = (() => {
+      try { return new URL(r.finalUrl || r.url).hostname.toLowerCase(); } catch { return ''; }
+    })();
+    if (hostForBadge) {
+      const origin = location.origin;
+      const badgeUrl = `${origin}/badge/${hostForBadge}.svg`;
+      const reportUrl = `${origin}/?url=${encodeURIComponent(hostForBadge)}&src=badge`;
+      const md = `[![security headers](${badgeUrl})](${reportUrl})`;
+      const htmlSnip = `<a href="${reportUrl}"><img src="${badgeUrl}" alt="security headers"></a>`;
+      const embed = el('div', { class: 'embed', id: 'embed-badge' },
+        el('h2', { text: 'Embed your badge' }),
+        el('p', { class: 'small', text: 'Free shields-style badge for READMEs and footers. The grade is cached for up to about 24 hours; click-through opens this report.' }),
+        el('p', { class: 'embed-preview' }, el('a', { href: reportUrl }, el('img', { src: badgeUrl, alt: 'security headers grade badge' }))),
+        el('div', { class: 'snip' }, el('div', { class: 'bar' }, el('span', { class: 'small', text: 'Markdown' }), copyButton(() => md)), el('pre', {}, el('code', { text: md }))),
+        el('div', { class: 'snip' }, el('div', { class: 'bar' }, el('span', { class: 'small', text: 'HTML' }), copyButton(() => htmlSnip)), el('pre', {}, el('code', { text: htmlSnip }))),
+        el('div', { class: 'snip' }, el('div', { class: 'bar' }, el('span', { class: 'small', text: 'Badge URL' }), copyButton(() => badgeUrl)), el('pre', {}, el('code', { text: badgeUrl }))));
+      out.append(embed);
+    }
+
+    const raw = el('details', { class: 'item' }, el('summary', {}, el('span', { class: 'name', text: `Raw response headers (${r.headers.length})` })));
+    const t = el('table', { class: 'tbl' });
+    for (const [k, v] of r.headers) t.append(el('tr', {}, el('td', { text: k }), el('td', { text: v })));
+    raw.append(el('div', { class: 'body' }, t, el('p', { class: 'small', text: 'Cookie values are redacted.' })));
+    out.append(raw);
+    out.hidden = false;
+  }
+
+  function showError(msg) {
+    out.replaceChildren(el('div', { class: 'err', text: msg }));
+    out.hidden = false;
+  }
+
+  async function run(value) {
+    const v = value.trim();
+    if (!v) { showError('Enter a URL or domain, e.g. example.com.'); return; }
+    btn.disabled = true;
+    out.hidden = false;
+    out.replaceChildren(el('p', {}, el('span', { class: 'spinner' }), `Scanning ${v}…`));
+    const src = new URLSearchParams(location.search).get('src');
+    history.replaceState(null, '', `/?url=${encodeURIComponent(v)}${src ? `&src=${encodeURIComponent(src)}` : ''}`);
+    try {
+      const res = await fetch(`/api/scan?url=${encodeURIComponent(v)}`, { headers: { accept: 'application/json' } });
+      const j = await res.json();
+      if (!res.ok) { showError(j.error && j.error.message ? j.error.message : `Scan failed (HTTP ${res.status}).`); return; }
+      render(j);
+      out.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (_) {
+      showError('Network error. Please try again.');
+    } finally { btn.disabled = false; }
+  }
+
+  form.addEventListener('submit', (e) => { e.preventDefault(); run(input.value); });
+  for (const a of document.querySelectorAll('[data-example]')) {
+    a.addEventListener('click', (e) => { e.preventDefault(); input.value = a.dataset.example; run(a.dataset.example); });
+  }
+  const q = new URLSearchParams(location.search).get('url');
+  if (q) { input.value = q; run(q); }
+})();

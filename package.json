@@ -1,0 +1,15 @@
+{
+  "name": "headerguard",
+  "version": "0.5.1",
+  "private": true,
+  "description": "Free one-off website security-headers scanner (HSTS, CSP, framing, COOP/CORP/COEP, cookies) with fix snippets, a JSON API and a remote MCP server",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HeaderGuard – Free website security headers scanner</title>
+<meta name="description" content="Scan any website's HTTP security headers (HSTS, CSP, X-Frame-Options, Referrer-Policy, Permissions-Policy, COOP/CORP/COEP, cookie flags). Get a 0–100 score, an A+ to F grade, and copy-paste fixes for nginx, Apache, Cloudflare, Netlify, Vercel and Express.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+<link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt">
+<link rel="service-desc" type="application/json" href="/openapi.json" title="OpenAPI 3.1">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <div class="wrap nav">
+    <a class="brand" href="/"><svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#1e3a8a"/><path d="M16 6l8 3v6c0 5-3.4 9.4-8 11-4.6-1.6-8-6-8-11V9z" fill="#fff"/><path d="M12 16h8M12 12h8M12 20h5" stroke="#1e3a8a" stroke-width="2"/></svg> HeaderGuard</a>
+    <nav><a href="/#headers">Headers</a><a href="/docs">API &amp; scoring</a><a href="/#privacy">Privacy</a></nav>
+  </div>
+</header>
+
+<main>
+<section class="hero">
+  <div class="wrap">
+    <h1>How secure are your website's HTTP headers?</h1>
+    <p class="lead">Free one-off scan of HSTS, Content-Security-Policy, framing, MIME sniffing, Referrer-Policy, Permissions-Policy, cross-origin isolation and cookie flags. You get a 0–100 score, an A+ to F grade, and copy-paste fixes. No sign-up.</p>
+    <form id="scan-form" class="check" autocomplete="off" novalidate>
+      <label for="url" class="sr">Website URL or domain</label>
+      <input id="url" name="url" type="text" inputmode="url" placeholder="example.com or https://example.com/page" spellcheck="false" autocapitalize="off" required maxlength="2048">
+      <button type="submit" id="go">Scan headers</button>
+    </form>
+    <p class="hint">Examples: <a href="/?url=github.com" data-example="github.com">github.com</a> · <a href="/?url=cloudflare.com" data-example="cloudflare.com">cloudflare.com</a> · <a href="/?url=example.com" data-example="example.com">example.com</a></p>
+  </div>
+</section>
+
+<section id="results" class="wrap results" hidden aria-live="polite"></section>
+
+<section id="headers" class="wrap">
+  <h2>What we check</h2>
+  <div class="grid">
+    <article class="card"><h3>HTTPS &amp; HSTS</h3><p>The page should be served over HTTPS, plain HTTP should redirect to it, and <code>Strict-Transport-Security</code> should tell browsers to never use HTTP again (max-age, includeSubDomains, preload).</p></article>
+    <article class="card"><h3>Content-Security-Policy</h3><p>We parse every directive and flag <code>'unsafe-inline'</code>, <code>'unsafe-eval'</code>, wildcard sources and missing <code>default-src</code>, <code>object-src</code>, <code>base-uri</code> and <code>frame-ancestors</code>. Report-Only policies are recognized but not counted as protection.</p></article>
+    <article class="card"><h3>Clickjacking &amp; sniffing</h3><p><code>X-Frame-Options</code> (or CSP <code>frame-ancestors</code>) stops other sites from framing your page. <code>X-Content-Type-Options: nosniff</code> stops browsers from guessing content types.</p></article>
+    <article class="card"><h3>Referrer &amp; Permissions</h3><p><code>Referrer-Policy</code> controls how much of your URLs leak to other sites. <code>Permissions-Policy</code> turns off features like camera, microphone and geolocation that you don't use.</p></article>
+    <article class="card"><h3>Cross-origin isolation</h3><p><code>Cross-Origin-Opener-Policy</code> and <code>Cross-Origin-Resource-Policy</code> protect against cross-site leaks. <code>Cross-Origin-Embedder-Policy</code> is reported for information only.</p></article>
+    <article class="card"><h3>Extras</h3><p>Cookie flags (<code>Secure</code>, <code>HttpOnly</code>, <code>SameSite</code>), the deprecated <code>X-XSS-Protection</code>, and headers that leak software versions (<code>Server</code>, <code>X-Powered-By</code>, <code>X-AspNet-Version</code>).</p></article>
+  </div>
+  <p class="small">Scoring: HTTPS 10 · HSTS 15 · CSP 25 · Framing 10 · nosniff 10 · Referrer-Policy 10 · Permissions-Policy 5 · COOP 5 · CORP 5 · Cookies 5 = 100, minus up to 5 for version leaks. A+ ≥ 95, A ≥ 85, B ≥ 70, C ≥ 55, D ≥ 40, otherwise F. Sites without HTTPS are capped at 39 (F). <a href="/docs#scoring">Full scoring table</a>.</p>
+</section>
+
+<section id="api" class="wrap">
+  <h2>Free JSON API</h2>
+  <p>No key needed, CORS enabled. Requests are rate-limited per IP (about 30 scans/min) and results are cached in memory for 2 minutes.</p>
+  <pre><code id="curl-example">curl "https://headerguard.mike-tusa.workers.dev/api/scan?url=example.com"</code></pre>
+  <p>Embeddable grade badge: <code>/badge/&lt;host&gt;.svg</code> — see the report page after a scan, or <a href="/docs#badge">the docs</a>.</p>
+  <p><a href="/docs">API reference and response format</a> · <a href="#agents">For AI agents</a> (MCP server, llms.txt, OpenAPI)</p>
+  <section id="pro" class="pro">
+    <h3>HeaderGuard Pro — $9/mo</h3>
+    <p>For developers and CI: about <strong>120 scans/min</strong> per license key (vs about 30/min per IP on the free plan), plus <code>POST /api/scan/batch</code> (up to 5 URLs). Same grading, same SSRF protections, same per-request CPU cap. Free badge and one-off scans stay free.</p>
+    <p><a class="btn" href="https://buy.polar.sh/polar_cl_isRRVJTATDI60ftjw6GnmlDneRdw46fI2cQcm0n6pnD" target="_blank" rel="noopener noreferrer">Get HeaderGuard Pro</a>
+       <span class="small"> · <a href="/docs#pro">API &amp; key usage</a></span></p>
+    <p class="small">Paid via <a href="https://buy.polar.sh/polar_cl_isRRVJTATDI60ftjw6GnmlDneRdw46fI2cQcm0n6pnD" target="_blank" rel="noopener noreferrer">Polar</a> (merchant of record). Cancel anytime in the <a href="https://polar.sh/digital-promo/portal" target="_blank" rel="noopener noreferrer">Polar customer portal</a>. Support: <a href="mailto:digitalpromohub.support@gmail.com">digitalpromohub.support@gmail.com</a>.</p>
+  </section>
+</section>
+
+<section id="agents" class="wrap"><h2>For AI agents (MCP)</h2>
+<p>HeaderGuard is also a remote <a href="https://modelcontextprotocol.io/" target="_blank" rel="noopener noreferrer">Model Context Protocol</a> (MCP) server. Most MCP clients accept this config; some use a different format (for example, VS Code uses a <code>servers</code> key). Clients with a settings screen just need the URL <code>https://headerguard.mike-tusa.workers.dev/mcp</code>.</p>
+<pre><code id="mcp-config">{ "mcpServers": { "headerguard": { "type": "http", "url": "https://headerguard.mike-tusa.workers.dev/mcp" } } }</code></pre>
+<p>One read-only tool, <code>scan_headers</code> (a URL or domain in, the same score, grade, findings and fixes as the JSON API out). Same limits and the same HeaderGuard Pro license key as the API: send it as <code>Authorization: Bearer HDRG-…</code> for higher limits. No key is needed.</p>
+<p class="small">Machine-readable docs: <a href="/llms.txt">llms.txt</a> · <a href="/openapi.json">OpenAPI 3.1 spec</a></p></section>
+
+<section id="privacy" class="wrap">
+  <h2>Privacy</h2>
+  <p>We don't store the URLs you scan or the results. A scan result is kept only in the server's memory for up to 2 minutes, so repeat requests are fast, and then it is discarded. The embeddable grade badge (<code>/badge/&lt;host&gt;.svg</code>) may keep a host's grade letter at the edge for up to about 24 hours (see <a href="/docs#badge">badge docs</a>); that cache holds only the SVG badge, not the URL list or raw headers. We don't keep request logs, and your IP address is used only in short-lived counters for rate limiting and, once a day, to count unique visitors: we store only a salted hash of your network address (no IP address, user agent, scanned URL or key), which changes every day and is deleted after 9 days. If you send a HeaderGuard Pro license key, we check it against our license store (a short-lived edge cache of the result); we do not log the key. Payment details are handled by Polar as merchant of record, not by us. The site runs on Cloudflare Workers, and Cloudflare processes requests in order to serve it.</p>
+  <p>If you call HeaderGuard through the RapidAPI marketplace (<code>/rapidapi/v1/*</code>), RapidAPI proxies, logs and meters those requests and handles that subscription and its billing under its own privacy policy; RapidAPI acts as a processor for those calls. Direct use of this site and its API does not involve RapidAPI.</p>
+  <p>Last updated: 15 October 2026 (added the daily unique-visitor count and the RapidAPI marketplace route).</p>
+  <p>To run a scan, our server sends ordinary GET requests to the site you entered (plus a check of its plain-HTTP address) and reads only the response headers; the page content is discarded unread. Before each request it looks up the site's IP addresses via DNS-over-HTTPS (Cloudflare <code>cloudflare-dns.com</code>, with Google <code>dns.google</code> as fallback), so those resolvers see the hostname. Cookie values set by the scanned site are never shown or kept.</p>
+  <p>No analytics, no cookies, no third-party scripts or resources on this site.</p>
+  <p><strong>Contact:</strong> <a href="mailto:digitalpromohub.support@gmail.com">digitalpromohub.support@gmail.com</a></p>
+</section>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <p>HeaderGuard: free one-off checks of a website's HTTP security headers. Results are informational, based on one response at the moment of the scan, and not a full security audit.</p>
+    <p>Contact: <a href="mailto:digitalpromohub.support@gmail.com">digitalpromohub.support@gmail.com</a> · <a href="/docs">API &amp; scoring docs</a> · <a href="/#privacy">Privacy</a></p>
+  </div>
+</footer>
+</body>
+</html>
