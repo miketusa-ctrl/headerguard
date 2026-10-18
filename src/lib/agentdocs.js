@@ -1,8 +1,7 @@
 /**
  * Agent-discovery documents (since v0.4.0): /llms.txt (llmstxt.org format), /openapi.json (OpenAPI 3.1) and
- * /.well-known/mcp/server-card.json (static MCP server card, SEP-1649 shape; Smithery's scan fallback).
- * Generated from code constants and limitsFor(env), so limits / versions / URLs can't drift from what the Worker
- * enforces. test/agent.test.js checks them against the real router (paths, statuses, headers, error codes).
+ * /.well-known/mcp/server-card.json (static MCP server card, SEP-1649 shape; Smithery's scan fallback). Generated
+ * from code constants and limitsFor(env), so limits / versions / URLs can't drift from what the Worker enforces.
  */
 import { VERSION, MAX_REDIRECTS } from './scan.js';
 import { PRO_PRICE_LABEL } from './pro.js';
