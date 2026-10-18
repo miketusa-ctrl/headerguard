@@ -1,7 +1,7 @@
 /**
- * HeaderGuard remote MCP server (v0.4.0). Hand-rolled JSON-RPC 2.0 over Streamable HTTP; no SDK, no dependencies.
- * Adapted from DnsGuard's src/lib/mcp.js (agent-ready recipe §2): transport, era handling and caps are unchanged;
- * SERVER_INFO, instructions, TOOLS, callTool()/summarizeScan(), the error-meta prefix and pass-through headers differ.
+ * HeaderGuard remote MCP server (v0.4.0). Hand-rolled JSON-RPC 2.0 over Streamable HTTP; no SDK, no dependencies. Adapted
+ * from DnsGuard's src/lib/mcp.js: transport, era handling and caps are unchanged; SERVER_INFO, instructions, TOOLS,
+ * callTool()/summarizeScan(), the error-meta prefix and pass-through headers differ.
  *
  * Dual-era and stateless:
  *  - Modern (MCP 2026-07-28): every request carries params._meta["io.modelcontextprotocol/protocolVersion"] plus the
