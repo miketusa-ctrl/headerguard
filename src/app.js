@@ -79,7 +79,7 @@ async function rateLimited(env, key, limit, kind = 'scan', bindingName = 'SCAN_L
   return !memLimit(`${kind}:${key}`, limit, 60_000);
 }
 
-/** IPv4 as is; IPv6 → its /64 (one subscriber controls a whole /64). Same output as workdayapi's (agent-ready recipe §1). */
+/** IPv4 as is; IPv6 → its /64 (one subscriber controls a whole /64). Same output as workdayapi's. */
 export function ipBucket(ip) {
   const s = String(ip || 'unknown').trim().toLowerCase();
   if (!s.includes(':')) return s;
@@ -251,7 +251,7 @@ function createRouter({ html, docs, js, css, fetchImpl, cache }) {
       if (request.method !== 'GET' && request.method !== 'HEAD') return apiError(405, 'method_not_allowed', 'Use GET.', { allow: 'GET, HEAD, OPTIONS' });
       const head = request.method === 'HEAD';
       const doc = (body, type, cache = 'public, max-age=3600') => new Response(head ? null : body, { headers: { 'content-type': type, 'cache-control': cache, ...CORS, ...API_SECURITY } });
-      // Glama connector ownership claim, served at /.well-known/glama.json. Replace the placeholder with your own claim token from glama.ai.
+      // Glama connector ownership claim, served at /.well-known/glama.json. Set your own glama.ai claim token as the GLAMA_CLAIM Worker secret (or replace the placeholder, if present).
       if (path === '/.well-known/glama.json') return doc(GLAMA_CLAIM, 'application/json');
       if (path === '/llms.txt') return doc(llmsTxt(url.origin, limitsFor(env)), 'text/plain; charset=utf-8');
       if (path === '/openapi.json') return doc(JSON.stringify(openApiSpec(url.origin, limitsFor(env)), null, 2), 'application/json; charset=utf-8');
