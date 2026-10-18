@@ -12,7 +12,7 @@ Scan a website's HTTP security headers (HSTS, CSP, framing, COOP/CORP, cookies).
 
 HeaderGuard is a remote MCP server (Streamable HTTP) at `https://headerguard.mike-tusa.workers.dev/mcp`. Tools: `scan_headers`.
 
-Most MCP clients (Claude Desktop, Cursor, Cline, Windsurf) accept this config:
+Cursor, Cline and Windsurf accept this config:
 
 ```json
 {
@@ -25,7 +25,9 @@ Most MCP clients (Claude Desktop, Cursor, Cline, Windsurf) accept this config:
 }
 ```
 
-Clients that only support stdio can bridge with `npx mcp-remote https://headerguard.mike-tusa.workers.dev/mcp`. VS Code uses a `servers` key instead of `mcpServers`.
+Claude Desktop: open Settings > Connectors, choose "Add custom connector" and paste `https://headerguard.mike-tusa.workers.dev/mcp`. Or, for clients that only support local (stdio) servers, use the mcp-remote bridge: `npx mcp-remote https://headerguard.mike-tusa.workers.dev/mcp`.
+
+VS Code uses a `servers` key instead of `mcpServers`.
 
 The `server.json` file is the [MCP Registry](https://registry.modelcontextprotocol.io) manifest for this server.
 
@@ -39,6 +41,8 @@ npx wrangler dev        # local dev server
 ```
 
 `wrangler.toml` is a template: create your own KV namespaces / D1 databases / rate-limit namespaces and replace the `<PLACEHOLDER>` values before `npx wrangler deploy`. Any secrets the Worker reads go in `wrangler secret put` (or `.dev.vars` locally), never in the repo.
+
+Optional Worker secrets (leave unset if you do not need them): `RAPIDAPI_PROXY_SECRET` (only needed if you sell the API through RapidAPI; it must match the X-RapidAPI-Proxy-Secret header RapidAPI adds).
 
 ## License
 
